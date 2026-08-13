@@ -187,8 +187,8 @@ module.exports = (bot) => {
             ctx.editMessageText(`⚠️ Are you sure you want to delete ALL tests of **${coaching}** in **${state.year}**?`, { parse_mode: 'Markdown', reply_markup: keyboard.reply_markup });
         } else {
             await AdminState.findOneAndUpdate({ adminId: ADMIN_ID }, { step: 'DEL_CHOOSE_TEST' });
-            const tests = await TxtSeries.find({ year: state.year, coaching });
-            const buttons = tests.map(t => Markup.button.callback(`Test: ${t.testCode}`, `del_test_${t.testCode}`));
+            const testCodes = await TxtSeries.distinct('testCode', { year: state.year, coaching });
+            const buttons = testCodes.map(tc => Markup.button.callback(`Test: ${tc}`, `del_test_${tc}`));
             ctx.editMessageText(`Year: ${state.year}\nCoaching: ${coaching}\nNow select the **Test Code**:`, { parse_mode: 'Markdown', reply_markup: Markup.inlineKeyboard(buttons, {columns: 2}).reply_markup });
         }
     });
@@ -215,7 +215,7 @@ module.exports = (bot) => {
                 await TxtSeries.deleteMany({ year: state.year, coaching: state.coaching });
                 ctx.editMessageText(`✅ Successfully deleted Coaching: ${state.coaching} from Year: ${state.year}`);
             } else if (state.targetType === 'TEST') {
-                await TxtSeries.deleteOne({ year: state.year, coaching: state.coaching, testCode: state.testCode });
+                await TxtSeries.deleteMany({ year: state.year, coaching: state.coaching, testCode: state.testCode });
                 ctx.editMessageText(`✅ Successfully deleted Test Code: ${state.testCode}`);
             }
         } catch (e) {
@@ -286,8 +286,8 @@ module.exports = (bot) => {
             ctx.editMessageText(`You selected Coaching: **${coaching}**\n\nPlease type the **NEW NAME** for this coaching:`, { parse_mode: 'Markdown' });
         } else {
             await AdminState.findOneAndUpdate({ adminId: ADMIN_ID }, { step: 'EDIT_CHOOSE_TEST' });
-            const tests = await TxtSeries.find({ year: state.year, coaching });
-            const buttons = tests.map(t => Markup.button.callback(`Test: ${t.testCode}`, `edit_test_${t.testCode}`));
+            const testCodes = await TxtSeries.distinct('testCode', { year: state.year, coaching });
+            const buttons = testCodes.map(tc => Markup.button.callback(`Test: ${tc}`, `edit_test_${tc}`));
             ctx.editMessageText(`Year: ${state.year}\nCoaching: ${coaching}\nNow select the **Test Code**:`, { parse_mode: 'Markdown', reply_markup: Markup.inlineKeyboard(buttons, {columns: 2}).reply_markup });
         }
     });
