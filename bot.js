@@ -92,12 +92,11 @@ bot.on('document', async (ctx, next) => {
         const testCode = codeMatch[0];
 
         try {
-            let test = await TxtSeries.findOne({ year: state.year, coaching: state.coaching, testCode });
+            let test = await TxtSeries.findOne({ year: state.year, coaching: state.coaching, testCode, format: state.format });
             if (!test) {
                 test = new TxtSeries({ year: state.year, coaching: state.coaching, testCode, format: state.format, fileId });
             } else {
                 test.fileId = fileId;
-                test.format = state.format; // Update format in case it changed
             }
             await test.save();
             ctx.reply(`✅ Saved: **${testCode} (${state.format})**`, { parse_mode: 'Markdown' });
@@ -146,11 +145,10 @@ bot.on('text', async (ctx, next) => {
         state.testCode = text;
         
         try {
-            let test = await TxtSeries.findOne({ year: state.year, coaching: state.coaching, testCode: state.testCode });
+            let test = await TxtSeries.findOne({ year: state.year, coaching: state.coaching, testCode: state.testCode, format: state.format });
             if (!test) {
                 test = new TxtSeries({ year: state.year, coaching: state.coaching, testCode: state.testCode, format: state.format, fileId: state.fileId });
             } else {
-                test.format = state.format;
                 test.fileId = state.fileId;
             }
             await test.save();
@@ -172,7 +170,7 @@ bot.on('text', async (ctx, next) => {
                 await TxtSeries.updateMany({ year: state.year, coaching: state.oldName }, { $set: { coaching: newName } });
                 ctx.reply(`✅ Successfully renamed Coaching from **${state.oldName}** to **${newName}** in Year ${state.year}!`, { parse_mode: 'Markdown' });
             } else if (state.targetType === 'TEST') {
-                await TxtSeries.updateOne({ year: state.year, coaching: state.coaching, testCode: state.oldName }, { $set: { testCode: newName } });
+                await TxtSeries.updateMany({ year: state.year, coaching: state.coaching, testCode: state.oldName }, { $set: { testCode: newName } });
                 ctx.reply(`✅ Successfully renamed Test Code from **${state.oldName}** to **${newName}**!`, { parse_mode: 'Markdown' });
             }
         } catch (e) {
@@ -207,11 +205,70 @@ bot.action(/^coaching_(.+)_(.+)$/, async (ctx) => {
     
     const tests = await TxtSeries.find({ year, coaching });
     
-    const buttons = tests.map(t => Markup.button.callback(`Test: ${t.testCode} (${t.format})`, `test_${t._id}`));
+    const testMap = new Map();
+    for (const t of tests) {
+        if (!testMap.has(t.testCode)) {
+            testMap.set(t.testCode, []);
+        }
+        testMap.get(t.testCode).push(t);
+    }
+    
+    const buttons = [];
+    for (const [testCode, formatsList] of testMap.entries()) {
+        const firstDoc = formatsList[0];
+        buttons.push(Markup.button.callback(`Test: ${testCode}`, `testcode_${firstDoc._id}`));
+    }
+    
     buttons.push(Markup.button.callback("⬅️ Back to Coachings", `year_${year}`));
     const keyboard = Markup.inlineKeyboard(buttons, { columns: 2 });
     
     ctx.editMessageText(`📅 **Year:** ${year}\n📌 **Coaching:** ${coaching}\n\n👉 Select a Test Code:`, { parse_mode: 'Markdown', reply_markup: keyboard.reply_markup });
+});
+
+bot.action(/^testcode_(.+)$/, async (ctx) => {
+    const docId = ctx.match[1];
+    try {
+        const doc = await TxtSeries.findById(docId);
+        if (!doc) return ctx.answerCbQuery("Test not found!");
+
+        const allFormats = await TxtSeries.find({ year: doc.year, coaching: doc.coaching, testCode: doc.testCode });
+
+        if (allFormats.length > 1) {
+            ctx.answerCbQuery();
+            const formatButtons = allFormats.map(f => 
+                Markup.button.callback(f.format, `sendfile_${f._id}`)
+            );
+            formatButtons.push(Markup.button.callback("⬅️ Back to Tests", `coaching_${doc.year}_${doc.coaching}`));
+            
+            const keyboard = Markup.inlineKeyboard(formatButtons, { columns: 2 });
+            
+            ctx.editMessageText(
+                `📅 **Year:** ${doc.year}\n📌 **Coaching:** ${doc.coaching}\n📝 **Test Code:** ${doc.testCode}\n\n` +
+                `Is test ke liye Old aur New dono formats available hain.\n👉 **Select Format:**`,
+                { parse_mode: 'Markdown', reply_markup: keyboard.reply_markup }
+            );
+        } else {
+            ctx.answerCbQuery("Sending file...");
+            await ctx.replyWithDocument(doc.fileId, { caption: `📚 ${doc.coaching} - ${doc.testCode} (${doc.format})` });
+        }
+    } catch(e) {
+        console.error(e);
+        ctx.answerCbQuery("Invalid request!");
+    }
+});
+
+bot.action(/^sendfile_(.+)$/, async (ctx) => {
+    const docId = ctx.match[1];
+    try {
+        const doc = await TxtSeries.findById(docId);
+        if (!doc) return ctx.answerCbQuery("Test file not found!");
+
+        ctx.answerCbQuery("Sending file...");
+        await ctx.replyWithDocument(doc.fileId, { caption: `📚 ${doc.coaching} - ${doc.testCode} (${doc.format})` });
+    } catch(e) {
+        console.error(e);
+        ctx.answerCbQuery("Invalid request!");
+    }
 });
 
 bot.action(/^test_(.+)$/, async (ctx) => {
